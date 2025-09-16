@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>V‑Dem v15 Dashboard (Data Exporter)</title>
+
+    <!-- Leaflet CSS for map rendering. -->
+    <link
+        rel="stylesheet"
+        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
+    <!-- Leaflet JS for map interactions. -->
+    <script
+        src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    ></script>
+    <!-- Simple style definition for light/dark themes and layout -->
+    <style>
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #333333;
+            --panel-bg: #f7f7f7;
+            --panel-border: #e0e0e0;
+            --accent-color: #0a84ff;
+            --danger-color: #d9534f;
+        }
+        .dark-mode {
+            --bg-color: #1e1e1e;
+            --text-color: #f2f2f2;
+            --panel-bg: #2b2b2b;
+            --panel-border: #444444;
+            --accent-color: #3399ff;
+            --danger-color: #e06666;
+        }
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: var(--bg-color);
+            color: var(--text-color);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden; /* Prevent body scrollbars */
+        }
+        /* Top navigation bar */
+        #navbar {
+            display: flex;
+            align-items: center;
+            padding: 0.5rem 1rem;
+            background: var(--panel-bg);
+            border-bottom: 1px solid var(--panel-border);
+            flex-shrink: 0;
+        }
+        #navbar h1 {
+            flex-grow: 1;
+            font-size: 1.25rem;
+            margin: 0;
+        }
+        .nav-button {
+            margin-right: 0.5rem;
+            padding: 0.4rem 0.7rem;
+            border: 1px solid var(--panel-border);
+            background: var(--panel-bg);
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        .nav-button.active {
+            background: var(--accent-color);
+            color: #fff;
+        }
+        /* Layout for main content */
+        #content {
+            flex-grow: 1;
+            display: flex;
+            overflow: hidden;
+        }
+        #control-panel {
+            width: 250px;
+            background: var(--panel-bg);
+            border-right: 1px solid var(--panel-border);
+            overflow-y: auto;
+            padding: 1rem;
+            flex-shrink: 0;
+        }
+        #main-area {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        #map {
+            flex: 1; /* Allow map to take available space */
+            min-height: 300px;
+            border-bottom: 1px solid var(--panel-border);
+            z-index: 0; /* Ensure map is behind other elements */
+        }
+        #data-table-container {
+            flex: 1; /* Allow table to take available space */
+            overflow: auto; /* Changed to auto for better scrollbar handling */
+            padding: 1rem;
+            position: relative; /* For spinner positioning */
+        }
+        #data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9em;
+            table-layout: auto; /* Allow columns to size naturally */
+        }
+        #data-table th, #data-table td {
+            border: 1px solid var(--panel-border);
+            padding: 8px;
+            text-align: left;
+            white-space: nowrap; /* Prevent text wrapping */
+            overflow: hidden;
+            text-overflow: ellipsis; /* Add ellipsis for overflow */
+        }
+        #data-table th {
+            background-color: var(--panel-bg);
+            position: sticky;
+            top: 0;
+            z-index: 1; /* Keep header visible on scroll */
+        }
+        .spinner {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            border: 8px solid var(--panel-bg);
+            border-top: 8px solid var(--accent-color);
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            animation: spin 1s linear infinite;
+            z-index: 2000;
+        }
+        @keyframes spin {
+            0% { transform: translate(-50%, -50%) rotate(0deg); }
+            100% { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+        /* Modal for about dialog */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+        .modal-content {
+            background-color: var(--panel-bg);
+            margin: 5% auto;
+            padding: 20px;
+            border: 1px solid var(--panel-border);
+            width: 80%;
+            max-width: 800px;
+            border-radius: 6px;
+            color: var(--text-color);
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        .close {
+            color: var(--text-color);
+            font-size: 1.2rem;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .footnote {
+            font-size: 0.8rem;
+            margin-top: 1rem;
+            color: var(--text-color);
+            opacity: 0.8;
+        }
+        /* Export & quality panel styles */
+        .panel-section {
+            margin-bottom: 1rem;
+        }
+        .panel-section h3 {
+            margin-bottom: 0.5rem;
+            font-size: 1rem;
+        }
+        button {
+            padding: 0.4rem 0.6rem;
+            border: 1px solid var(--panel-border);
+            background: var(--panel-bg);
+            border-radius: 4px;
+            cursor: pointer;
+            color: var(--text-color); /* Ensure button text color is theme-aware */
+        }
+        button.primary {
+            background: var(--accent-color);
+            color: white;
+            border-color: var(--accent-color); /* Match border to background */
+        }
+    </style>
+</head>
+<body>
+    <!-- Spinner displayed during async data loading -->
+    <div id="spinner" class="spinner"></div>
+
+    <!-- Navigation bar with view selector and controls -->
+    <div id="navbar">
+        <h1>V‑Dem v15 Dashboard (Data Exporter)</h1>
+        <button class="nav-button active" data-view="overview">Overview</button>
+        <button class="nav-button" data-view="data-table">Data Table</button>
+        <button id="themeToggle" class="nav-button">Toggle Theme</button>
+        <button id="aboutButton" class="nav-button">About</button>
+    </div>
+
+    <div id="content">
+        <!-- Control panel on the left -->
+        <div id="control-panel">
+            <div class="panel-section">
+                <h3>Main Indicators</h3>
+                <select id="main-indicator-select" multiple size="5">
+                    <!-- Options populated by JS -->
+                </select>
+            </div>
+            <div class="panel-section">
+                <h3>Other Indicators</h3>
+                <select id="other-indicator-select" multiple size="8">
+                    <!-- Options populated by JS -->
+                </select>
+            </div>
+            <div class="panel-section">
+                <h3>Region</h3>
+                <select id="region-select" multiple size="5"></select>
+            </div>
+            <div class="panel-section">
+                <h3>Country</h3>
+                <select id="country-select" multiple size="8"></select>
+            </div>
+            <div class="panel-section">
+                <h3 id="year-range-label">Year Range</h3>
+                <div style="display:flex; justify-content: space-between; gap: 0.5rem;">
+                    <select id="start-year-select" style="flex:1;"></select>
+                    <select id="end-year-select" style="flex:1;"></select>
+                </div>
+            </div>
+            <div class="panel-section">
+                <h3>Quality Controls</h3>
+                <label><input type="checkbox" id="hide-low-coder" /> Hide low coder count (&lt; 3)</label><br />
+                <label><input type="checkbox" id="flag-convergence" /> Flag convergence issues</label>
+            </div>
+            <div class="panel-section">
+                <button id="resetFilters">Reset Filters</button>
+            </div>
+            <div class="panel-section">
+                <h3>Export</h3>
+                <button id="exportCSV">Export CSV</button>
+                <!-- PNG export removed as per user request -->
+            </div>
+        </div>
+        <!-- Main area with map and data table -->
+        <div id="main-area">
+            <div id="map"></div>
+            <div id="data-table-container">
+                <!-- Data table will be rendered here -->
+                <p style="text-align: center;">Select filters and navigate to "Data Table" to view data.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- About modal content -->
+    <div id="about-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>About V‑Dem v15</h2>
+                <span class="close" id="aboutClose">&times;</span>
+            </div>
+            <p>
+                The Varieties of Democracy (V‑Dem) Project provides country-year measures of democracy and governance
+                based on expert-coded assessments and Bayesian measurement models. Version 15 introduces updated
+                coding, revised region classifications, and flags for direct elections for heads of state (HOS) and
+                heads of government (HOG). When using these indicators, avoid drawing strong conclusions from point
+                estimates when coder counts are low (e.g., fewer than 3 coders), and always consider the uncertainty
+                intervals. Coder counts are provided in columns with a <code>_nr</code> suffix. Some variables are
+                flagged for convergence issues; these are listed in the convergence caution array and shown with a
+                warning dot when selected.
+            </p>
+            <p>
+                <strong>Suggested citation:</strong><br />
+                Varieties of Democracy (V‑Dem) Project. V‑Dem Dataset v15. V‑Dem Institute, University of Gothenburg.
+                Please cite the original V‑Dem dataset according to the citation guidelines provided in the codebook.
+            </p>
+            <p>
+                <strong>Documentation:</strong>
+                <ul>
+                    <li><a href="https://huggingface.co/datasets/mnshakoor06/Vdem/resolve/main/codebook.pdf" target="_blank">Codebook v15</a></li>
+                    <li><a href="https://huggingface.co/datasets/mnshakoor06/Vdem/resolve/main/cautionary_notes.pdf" target="_blank">Cautionary Notes</a></li>
+                    <li><a href="https://huggingface.co/datasets/mnshakoor06/Vdem/resolve/main/suggested_citation.pdf" target="_blank">Suggested Citation</a></li>
+                    <li><a href="https://huggingface.co/datasets/mnshakoor06/Vdem/resolve/main/whats_new.pdf" target="_blank">What's New v15</a></li>
+                </ul>
+            </p>
+            <p class="footnote">
+                V‑Dem data are provided under the CC BY 3.0 license. Data © V‑Dem Institute. Use responsibly and
+                acknowledge limitations.
+            </p>
+        </div>
+    </div>
+
+    <!-- Main application script. Note: this script uses ES modules. -->
+    <script type="module">
+        // Import DuckDB-Wasm from the CDN as an ES module.
+        import * as duckdb from 'https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.29.0/+esm';
+
+        // --- DuckDB-WASM Performance Note ---
+        // This application uses DuckDB-WASM with its httpfs extension to query a remote CSV file directly.
+        // It does NOT download the entire dataset into memory. Instead, DuckDB efficiently streams
+        // only the required data chunks from the remote file using HTTP Range Requests. This makes
+        // the application fast and memory-efficient, even with very large datasets.
+        
+        // Encapsulate ALL core constants in a single object to ensure robust scope and availability
+        const AppConfig = {
+            DATA_URL: 'https://huggingface.co/datasets/mnshakoor06/Vdem/resolve/main/vDem-v15.csv',
+            
+            variableMetadata: {
+                // High-Level Democracy Indices (p.47-49, Appendix A)
+                'v2x_polyarchy': 'Electoral Democracy Index (D)',
+                'v2x_libdem': 'Liberal Democracy Index (D)',
+                'v2x_partipdem': 'Participatory Democracy Index (D)',
+                'v2x_delibdem': 'Deliberative Democracy Index (D)',
+                'v2x_egaldem': 'Egalitarian Democracy Index (D)',
+
+                // Mid-Level Democracy Indices (Components) (p.49-60, Appendix A)
+                'v2x_freexp_altinf': 'Freedom of Expression & Alt. Info. Index (D)',
+                'v2x_frassoc_thick': 'Freedom of Association Thick Index (D)',
+                'v2xel_frefair': 'Clean Elections Index (D)',
+                'v2x_elecoff': 'Elected Officials Index (D)',
+                'v2x_liberal': 'Liberal Component Index (D)',
+                'v2xcl_rol': 'Equality before Law & Individual Liberty Index (D)',
+                'v2x_jucon': 'Judicial Constraints on Executive Index (D)',
+                'v2xlg_legcon': 'Legislative Constraints on Executive Index (D)',
+                'v2x_partip': 'Participatory Component Index (D)',
+                'v2x_cspart': 'Civil Society Participation Index (D)',
+                'v2xdl_delib': 'Deliberative Component Index (D)',
+                'v2x_egal': 'Egalitarian Component Index (D)',
+                'v2xeg_eqprotec': 'Equal Protection Index (D)',
+                'v2xeg_eqaccess': 'Equal Access Index (D)',
+                'v2xeg_eqdr': 'Equal Distribution of Resources Index (D)',
+                'v2x_api': 'Additive Polyarchy Index (D)',
+                'v2x_mpi': 'Multiplicative Polyarchy Index (D)',
+                'v2x_civlib': 'Civil Liberties Index (D)',
+                'v2x_clphy': 'Physical Violence Index (D)',
+                'v2x_clpol': 'Political Civil Liberties Index (D)',
+                'v2x_clpriv': 'Private Civil Liberties Index (D)',
+                'v2x_corr': 'Political Corruption Index (D)',
+                'v2x_execorr': 'Executive Corruption Index (D)',
+                'v2x_pubcorr': 'Public Sector Corruption Index (D)',
+                'v2x_gender': 'Women Political Empowerment Index (D)',
+                'v2x_gencl': 'Women Civil Liberties Index (D)',
+                'v2x_gencs': 'Women Civil Society Participation Index (D)',
+                'v2x_genpp': 'Women Political Participation Index (D)',
+                'v2x_rule': 'Rule of Law Index (D)',
+                'v2xdd_i_ci': 'Popular Initiative Index (D)',
+                'v2xdd_i_rf': 'Popular Referendum Index (D)',
+                'v2xdd_i_or': 'Obligatory Referendum Index (D)',
+                'v2xdd_i_pl': 'Plebiscites Index (D)',
+                'v2xdd_cic': 'Citizen-initiated Component of Direct Popular Vote Index (D)',
+                'v2xdd_toc': 'Top-Down Component of Direct Popular Vote Index (D)',
+                'v2xcs_ccsi': 'Core Civil Society Index (D)',
+                'v2x_elecreg': 'Electoral Regime Index (A)',
+                'v2xex_elecreg': 'Executive Electoral Regime Index (A)',
+                'v2xlg_elecreg': 'Legislative Electoral Regime Index (A)',
+                'v2x_EDcomp_thick': 'Electoral Component Index (D)',
+                'v2x_freexp': 'Freedom of Expression Index (D)',
+                'v2x_hosabort': 'Presidential Election Aborted (D)',
+                'v2x_hosinter': 'Chief Executive No Longer Elected (D)',
+                'v2x_legabort': 'Legislative Election Aborted (D)',
+                'v2xcl_disc': 'Freedom of Discussion Index (D)',
+                'v2xcl_dmove': 'Freedom of Domestic Movement Index (D)',
+                'v2xcl_slave': 'Freedom from Forced Labor Index (D)',
+                'v2xel_elecparl': 'Legislative Election (D)',
+                'v2xel_elecpres': 'Presidential Election (D)',
+                'v2xex_elecleg': 'Legislature Directly Elected (D)',
+                'v2xlg_leginter': 'Legislature Closed Down or Aborted (D)',
+                'v2xme_altinf': 'Alternative Sources of Information Index (D)',
+                'v2xps_party': 'Party Institutionalization Index (D)',
+                'v2x_divparctrl': 'Divided Party Control Index (D)',
+                'v2x_feduni': 'Division of Power Index (D)',
+                'v2xca_academ': 'Academic Freedom Index (D)',
+                
+                // Other Key Indicators (from OCR and typical V-Dem variables)
+                'v2psparban': 'Party Ban (C)',
+                'v2psbars': 'Barriers to Parties (C)',
+                'v2psoppaut': 'Opposition Parties Autonomy (C)',
+                'v2elmulpar': 'Elections Multiparty (C)',
+                'v2cseeorgs': 'CSO Entry and Exit (C)',
+                'v2csreprss': 'CSO Repression (C)',
+                'v2cldiscm': 'Freedom of Discussion for Men (C)',
+                'v2cldiscw': 'Freedom of Discussion for Women (C)',
+                'v2clacfree': 'Freedom of Academic & Cultural Expression (C)',
+                'v2mecenefm': 'Gov. Censorship Effort — Media (C)',
+                'v2meharjrn': 'Harassment of Journalists (C)',
+                'v2meslfcen': 'Media Self-Censorship (C)',
+                'v2mebias': 'Media Bias (C)',
+                'v2mecrit': 'Print/Broadcast Media Critical (C)',
+                'v2merange': 'Print/Broadcast Media Perspectives (C)',
+                'v2cltort': 'Freedom from Torture (C)',
+                'v2clkill': 'Freedom from Political Killings (C)',
+                'v2clslavem': 'Freedom from Forced Labor for Men (C)',
+                'v2clslavef': 'Freedom from Forced Labor for Women (C)',
+                'v2clrelig': 'Freedom of Religion (C)',
+                'v2clfmove': 'Freedom of Foreign Movement (C)',
+                'v2cldmovem': 'Freedom of Domestic Movement for Men (C)',
+                'v2cldmovew': 'Freedom of Domestic Movement for Women (C)',
+                'v2cltrnslw': 'Transparent Laws with Predictable Enforcement (C)',
+                'v2clrspct': 'Rigorous & Impartial Public Administration (C)',
+                'v2clacjstm': 'Access to Justice for Men (C)',
+                'v2clacjstw': 'Access to Justice for Women (C)',
+                'v2clacjust': 'Social Class Equality (Civil Liberty) (C)',
+                'v2clsocgrp': 'Social Group Equality (Civil Liberty) (C)',
+                'v2exrescon': 'Executive Respects Constitution (C)',
+                'v2jucomp': 'Compliance with Judiciary (C)',
+                'v2juhccomp': 'Compliance with High Court (C)',
+                'v2juhcind': 'High Court Independence (C)',
+                'v2juncind': 'Lower Court Independence (C)',
+                'v2lgqstexp': 'Legislature Questions Officials in Practice (C)',
+                'v2lgotovst': 'Executive Oversight (C)',
+                'v2lginvstp': 'Legislature Investigates in Practice (C)',
+                'v2lgoppart': 'Legislature Opposition Parties (C)',
+                'v2lgbicam': 'Legislature Bicameral (A*)',
+                'v2lgello': 'Lower Chamber Elected (A)',
+                'v2lgelecup': 'Upper Chamber Elected (A)',
+                'v2lginello': 'Indirectly Elected Legis. Lower Chamber (A)',
+                'v2lginelup': 'Indirectly Elected Legis. Upper Chamber (A)',
+                'v2psplats': 'Distinct Party Platforms (C)',
+                'v2pscohesv': 'Legislative Party Cohesion (C)',
+                'v2psorgs': 'Party Organizations (C)',
+                'v2psprbrch': 'Party Branches (C)',
+                'v2psprlnks': 'Party Linkages (C)',
+                'v2ddlexci': 'Initiatives Permitted (A)',
+                'v2ddsignci': 'Initiatives Signatures (A)',
+                'v2ddsigpci': 'Initiatives Signatures % (A)',
+                'v2ddadmci': 'Initiatives Administrative Threshold (A)',
+                'v2ddspmci': 'Initiatives Super Majority (A)',
+                'v2eltype': 'Election type (A*)',
+                
+                // General common columns for data access
+                'country_name': 'Country Name',
+                'country_text_id': 'Country ISO3 Code',
+                'year': 'Year',
+                'e_regionpol_6C': 'Region (Politico-Geographic 6-Category)',
+            },
+            HIGH_LEVEL_INDICES: [
+                'v2x_polyarchy', 'v2x_libdem', 'v2x_partipdem', 'v2x_delibdem', 'v2x_egaldem'
+            ],
+            CORE_COMMON_COLUMNS: ['country_name', 'country_text_id', 'year', 'e_regionpol_6C'],
+        };
+
+        // Global variables
+        let db, conn, map, geojson;
+        let cache = {}; // Simple in-memory cache for query results
+        let currentView = 'overview'; // Tracks the active view
+        let currentTableData = []; // Store the data currently displayed in the table
+
+        // Helper functions
+        const showSpinner = () => document.getElementById('spinner').style.display = 'block';
+        const hideSpinner = () => document.getElementById('spinner').style.display = 'none';
+        const hexToRgb = (hex) => {
+            const shorthandRegex = /^#?([a-f\d])([a-f\d])([a-f\d])$/i;
+            hex = hex.replace(shorthandRegex, function(m, r, g, b) { return r + r + g + g + b + b; });
+            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return result ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) } : {r:0,g:0,b:0};
+        };
+
+        // Initialize the DuckDB database
+        async function initDuckDB() {
+            try {
+                const bundles = duckdb.getJsDelivrBundles();
+                const bundle = await duckdb.selectBundle(bundles);
+                const worker = await duckdb.createWorker(bundle.mainWorker);
+                db = new duckdb.AsyncDuckDB(new duckdb.ConsoleLogger(), worker);
+                
+                const instantiateArgs = bundle.pthreadWorker ? [bundle.mainModule, bundle.pthreadWorker] : [bundle.mainModule];
+                await db.instantiate(...instantiateArgs);
+
+                conn = await db.connect();
+                
+                if (!conn) {
+                    throw new Error("DuckDB connection object is undefined after db.connect().");
+                }
+                
+                await conn.query("INSTALL httpfs; LOAD httpfs; SET enable_http_metadata_cache=true;");
+                
+                console.log("DuckDB initialized and HTTPFS extension loaded.");
+            } catch (e) {
+                console.error("Error during DuckDB initialization steps:", e);
+                throw new Error("Failed to initialize DuckDB: " + e.message);
+            }
+        }
+
+        // Fetch and cache the world GeoJSON for mapping
+        async function loadWorldGeoJSON() {
+            if (geojson) return geojson;
+            try {
+                const resp = await fetch('https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson');
+                geojson = await resp.json();
+            } catch (error) {
+                console.error('Failed to load world GeoJSON', error);
+                geojson = { type: 'FeatureCollection', features: [] };
+            }
+            return geojson;
+        }
+
+        // Execute a SQL query with caching
+        async function runQuery(key, sql) {
+            if (cache[key]) return cache[key];
+            showSpinner();
+            try {
+                const result = await conn.query(sql);
+                const rows = result.toArray().map(Object.fromEntries);
+                cache[key] = rows;
+                return rows;
+            } finally {
+                hideSpinner();
+            }
+        }
+        
+        // Populate filter selectors
+        async function populateSelectors() {
+            const baseCsvOptions = `, HEADER=TRUE, ALL_VARCHAR=TRUE`;
+
+            const regionSQL = `SELECT DISTINCT e_regionpol_6C AS region FROM read_csv_auto('${AppConfig.DATA_URL}'${baseCsvOptions}) WHERE e_regionpol_6C IS NOT NULL ORDER BY region`;
+            const countrySQL = `SELECT DISTINCT country_name, country_text_id FROM read_csv_auto('${AppConfig.DATA_URL}'${baseCsvOptions}) WHERE country_name IS NOT NULL ORDER BY country_name`;
+            const yearSQL = `SELECT DISTINCT year FROM read_csv_auto('${AppConfig.DATA_URL}'${baseCsvOptions}) WHERE year IS NOT NULL ORDER BY year`;
+
+            const [regions, countries, years] = await Promise.all([
+                runQuery('regions', regionSQL),
+                runQuery('countries', countrySQL),
+                runQuery('years', yearSQL)
+            ]);
+            
+            // Populate Main Indicators dropdown (for multiple selection)
+            const mainIndicatorSelect = document.getElementById('main-indicator-select');
+            mainIndicatorSelect.innerHTML = '';
+            const sortedHighLevelIndices = AppConfig.HIGH_LEVEL_INDICES.sort((a,b) => AppConfig.variableMetadata[a].localeCompare(AppConfig.variableMetadata[b]));
+            sortedHighLevelIndices.forEach(key => {
+                mainIndicatorSelect.add(new Option(AppConfig.variableMetadata[key], key));
+            });
+            mainIndicatorSelect.value = 'v2x_polyarchy'; // Select polyarchy by default
+
+            // Populate Other Indicators dropdown (for multiple selection)
+            const otherIndicatorSelect = document.getElementById('other-indicator-select');
+            otherIndicatorSelect.innerHTML = '';
+            const allOtherIndicators = Object.keys(AppConfig.variableMetadata).filter(key => 
+                !AppConfig.HIGH_LEVEL_INDICES.includes(key) && 
+                !AppConfig.CORE_COMMON_COLUMNS.includes(key)
+            );
+            
+            const sortedOtherIndicators = allOtherIndicators.sort((a,b) => AppConfig.variableMetadata[a].localeCompare(AppConfig.variableMetadata[b]));
+            sortedOtherIndicators.forEach(key => {
+                otherIndicatorSelect.add(new Option(AppConfig.variableMetadata[key], key));
+            });
+            otherIndicatorSelect.selectedIndex = -1; // No default selection
+
+            // Populate regions
+            const regionSelect = document.getElementById('region-select');
+            regionSelect.innerHTML = ''; 
+            regions.forEach(r => {
+                regionSelect.add(new Option(r.region, r.region));
+            });
+
+            // Populate countries
+            const countrySelect = document.getElementById('country-select');
+            countrySelect.innerHTML = ''; 
+            countries.forEach(c => {
+                const opt = new Option(c.country_name, c.country_name);
+                opt.dataset.iso = c.country_text_id; // Store ISO for map matching
+                countrySelect.add(opt);
+            });
+
+            // Populate years (filtered for >= 1960)
+            const startYearSelect = document.getElementById('start-year-select');
+            const endYearSelect = document.getElementById('end-year-select');
+            startYearSelect.innerHTML = '';
+            endYearSelect.innerHTML = '';
+
+            const distinctYears = years.map(y => parseInt(y.year)).filter(y => !isNaN(y) && y >= 1960).sort((a,b) => a-b);
+            const minYear = distinctYears[0];
+            const maxYear = distinctYears[distinctYears.length - 1];
+
+            distinctYears.forEach(y => {
+                startYearSelect.add(new Option(y, y));
+                endYearSelect.add(new Option(y, y));
+            });
+
+            // Set default year range to min and max available
+            startYearSelect.value = minYear;
+            endYearSelect.value = maxYear;
+        }
+
+        // Initialize the Leaflet map
+        function initMap() {
+            map = L.map('map').setView([20, 0], 2); // Default to world view
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 10, 
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }).addTo(map);
+        }
+
+        // Render Choropleth Map (based on the first selected indicator/component)
+        async function renderChoropleth(data, metric) {
+            if (map._choroplethLayer) map.removeLayer(map._choroplethLayer);
+            
+            const geo = await loadWorldGeoJSON();
+            const valueByIso = data.reduce((acc, row) => {
+                if (row.country_text_id) { 
+                    acc[row.country_text_id] = parseFloat(row[metric]);
+                }
+                return acc;
+            }, {});
+
+            const values = Object.values(valueByIso).filter(v => !isNaN(v));
+            if (values.length === 0) {
+                // If no data for the metric, render a light grey map with N/A tooltips
+                map._choroplethLayer = L.geoJSON(geo, {
+                    style: () => ({
+                        weight: 0.5, color: '#666', fillOpacity: 0.1, fillColor: '#ccc'
+                    }),
+                    onEachFeature: (feature, layer) => {
+                        layer.bindTooltip(`${feature.properties.name || feature.properties.NAME}: N/A`);
+                    }
+                }).addTo(map);
+                map.setView([20, 0], 2); // Reset to world view
+                return;
+            }
+
+            const min = Math.min(...values);
+            const max = Math.max(...values);
+            const accentRgb = hexToRgb(getComputedStyle(document.documentElement).getPropertyValue('--accent-color').trim());
+
+            const getColor = (d) => {
+                if (isNaN(d)) return 'rgba(0,0,0,0.1)';
+                const t = (d - min) / (max - min || 1);
+                const r = Math.round(255 + t * (accentRgb.r - 255));
+                const g = Math.round(255 + t * (accentRgb.g - 255));
+                const b = Math.round(255 + t * (accentRgb.b - 255));
+                return `rgb(${r},${g},${b})`;
+            };
+
+            map._choroplethLayer = L.geoJSON(geo, {
+                style: feature => ({
+                    weight: 0.5, color: '#666', fillOpacity: 0.7,
+                    fillColor: getColor(valueByIso[feature.id] || valueByIso[feature.properties.iso_a3] || valueByIso[feature.properties.NAME])
+                }),
+                onEachFeature: (feature, layer) => {
+                    const val = valueByIso[feature.id] || valueByIso[feature.properties.iso_a3] || valueByIso[feature.properties.NAME];
+                    layer.bindTooltip(`${feature.properties.name || feature.properties.NAME}: ${val !== undefined && val !== null && !isNaN(val) ? val.toFixed(3) : 'N/A'}`);
+                }
+            }).addTo(map);
+
+            // Zoom map to selected areas
+            const selectedCountries = Array.from(document.getElementById('country-select').selectedOptions);
+            const selectedRegions = Array.from(document.getElementById('region-select').selectedOptions);
+
+            let featuresToFit = [];
+            if (selectedCountries.length > 0) {
+                const selectedIsos = new Set(selectedCountries.map(o => o.dataset.iso));
+                featuresToFit = geo.features.filter(f => selectedIsos.has(f.id) || selectedIsos.has(f.properties.iso_a3) || selectedIsos.has(f.properties.NAME));
+            } else if (selectedRegions.length > 0) {
+                const regionNames = selectedRegions.map(o => o.value);
+                const tempSql = `SELECT DISTINCT country_text_id FROM read_csv_auto('${AppConfig.DATA_URL}', HEADER=TRUE, ALL_VARCHAR=TRUE) WHERE e_regionpol_6C IN (${regionNames.map(r => `'${r.replace("'", "''")}'`).join(',')}) AND country_text_id IS NOT NULL`;
+                const countriesInRegions = await runQuery('countriesInRegions', tempSql);
+                const isosInRegions = new Set(countriesInRegions.map(d => d.country_text_id));
+
+                featuresToFit = geo.features.filter(f => isosInRegions.has(f.id) || isosInRegions.has(f.properties.iso_a3) || isosInRegions.has(f.properties.NAME));
+            }
+
+            if (featuresToFit.length > 0) {
+                const bounds = L.geoJSON({ type: 'FeatureCollection', features: featuresToFit }).getBounds();
+                if (bounds.isValid()) map.fitBounds(bounds, {padding: [20, 20]});
+                else map.setView([20, 0], 2); // Fallback to world view if bounds are invalid
+            } else {
+                map.setView([20, 0], 2); // Default to world view if no specific selections
+            }
+        }
+        
+        // --- DATA DISPLAY AND EXPORT FUNCTIONS ---
+
+        // Get all selected metrics (main indicators + other indicators)
+        function getSelectedMetrics() {
+            const mainIndicators = Array.from(document.getElementById('main-indicator-select').selectedOptions).map(o => o.value).filter(Boolean);
+            const otherIndicators = Array.from(document.getElementById('other-indicator-select').selectedOptions).map(o => o.value).filter(Boolean);
+            return [...new Set([...mainIndicators, ...otherIndicators])]; // Combine and remove duplicates
+        }
+
+        // Build a robust WHERE clause from filters for year range
+        function buildWhereClause(metricsForCoderCount = []) {
+            const hideLowCoder = document.getElementById('hide-low-coder').checked;
+            const regions = Array.from(document.getElementById('region-select').selectedOptions).map(o => `'${o.value.replace("'", "''")}'`);
+            const countries = Array.from(document.getElementById('country-select').selectedOptions).map(o => `'${o.value.replace("'", "''")}'`);
+            
+            const startYear = document.getElementById('start-year-select').value;
+            const endYear = document.getElementById('end-year-select').value;
+            
+            let clauses = [];
+            if (startYear && endYear && parseInt(startYear) <= parseInt(endYear)) { 
+                // Explicitly cast year column to INTEGER for comparison to avoid type mismatch
+                clauses.push(`CAST(year AS INTEGER) BETWEEN ${startYear} AND ${endYear}`);
+            } else {
+                return ''; // Return empty string if years are not properly selected
+            }
+            
+            if (regions.length > 0) clauses.push(`e_regionpol_6C IN (${regions.join(',')})`);
+            if (countries.length > 0) clauses.push(`country_name IN (${countries.join(',')})`);
+            
+            // Apply coder count filter for all relevant metrics
+            if (hideLowCoder && metricsForCoderCount.length > 0) {
+                const coderCountClauses = metricsForCoderCount.map(metric => `${metric}_nr >= 3`).join(' AND ');
+                clauses.push(`(${coderCountClauses})`);
+            }
+            
+            return clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
+        }
+
+        async function renderDataTable() {
+            const selectedMetrics = getSelectedMetrics();
+            const startYear = document.getElementById('start-year-select').value;
+            const endYear = document.getElementById('end-year-select').value;
+
+            const tableContainer = document.getElementById('data-table-container');
+            tableContainer.innerHTML = ''; // Clear previous content
+
+            if (selectedMetrics.length === 0) {
+                tableContainer.innerHTML = '<p style="text-align: center;">Please select one or more indicators to view data.</p>';
+                if (map._choroplethLayer) map.removeLayer(map._choroplethLayer);
+                map.setView([20, 0], 2);
+                return;
+            }
+            if (!startYear || !endYear || parseInt(startYear) > parseInt(endYear)) {
+                tableContainer.innerHTML = '<p style="text-align: center;">Please select a valid year range.</p>';
+                if (map._choroplethLayer) map.removeLayer(map._choroplethLayer);
+                map.setView([20, 0], 2);
+                return;
+            }
+
+            const baseCsvOptions = `, HEADER=TRUE, ALL_VARCHAR=TRUE`;
+            
+            const columnsToSelect = [...AppConfig.CORE_COMMON_COLUMNS, ...selectedMetrics].filter((value, index, self) => self.indexOf(value) === index);
+            const selectColsSQL = columnsToSelect.join(', ');
+
+            const whereClause = buildWhereClause(selectedMetrics);
+            if (!whereClause) {
+                tableContainer.innerHTML = '<p style="text-align: center;">Please select valid filters.</p>';
+                if (map._choroplethLayer) map.removeLayer(map._choroplethLayer);
+                map.setView([20, 0], 2);
+                return;
+            }
+
+            const sql = `SELECT ${selectColsSQL} FROM read_csv_auto('${AppConfig.DATA_URL}'${baseCsvOptions}) ${whereClause} ORDER BY country_name, year`;
+            const data = await runQuery(`data-table-${whereClause}-${selectedMetrics.join('-')}`, sql);
+            currentTableData = data; // Update the global variable with the latest data
+
+            if (data.length > 0) {
+                const table = document.createElement('table');
+                table.id = 'data-table';
+                
+                const thead = table.createTHead();
+                const headerRow = thead.insertRow();
+                columnsToSelect.forEach(col => {
+                    const th = document.createElement('th');
+                    th.textContent = AppConfig.variableMetadata[col] || col; // Use friendly name if available
+                    headerRow.appendChild(th);
+                });
+
+                const tbody = table.createTBody();
+                data.forEach(rowData => {
+                    const tr = tbody.insertRow();
+                    columnsToSelect.forEach(col => {
+                        const td = tr.insertCell();
+                        let value = rowData[col];
+                        if (typeof value === 'string' && !isNaN(parseFloat(value)) && col !== 'year' && value.includes('.')) {
+                            value = parseFloat(value).toFixed(3);
+                        }
+                        td.textContent = value !== null && value !== undefined ? value : 'N/A';
+                    });
+                });
+                tableContainer.appendChild(table);
+
+                // Update map based on the first selected metric (using data for the endYear)
+                if (selectedMetrics.length > 0) {
+                    await renderChoropleth(data.filter(d => d.year == endYear), selectedMetrics[0]);
+                } else {
+                     // If no metrics are selected, render a default grey map
+                    if (map._choroplethLayer) map.removeLayer(map._choroplethLayer);
+                    const geo = await loadWorldGeoJSON();
+                    map._choroplethLayer = L.geoJSON(geo, {
+                        style: () => ({
+                            weight: 0.5, color: '#666', fillOpacity: 0.1, fillColor: '#ccc'
+                        }),
+                        onEachFeature: (feature, layer) => {
+                            layer.bindTooltip(`${feature.properties.name || feature.properties.NAME}: N/A`);
+                        }
+                    }).addTo(map);
+                    map.setView([20, 0], 2);
+                }
+
+            } else {
+                tableContainer.innerHTML = '<p style="text-align: center;">No data available for current selections.</p>';
+                if (map._choroplethLayer) map.removeLayer(map._choroplethLayer);
+                map.setView([20, 0], 2);
+            }
+        }
+
+        // All views will now just render the data table.
+        function updateView() {
+            renderDataTable();
+        }
+        
+        // --- UTILITY AND EVENT HANDLER FUNCTIONS ---
+
+        function exportToCSV() {
+            if (currentTableData.length === 0) {
+                alert('No data to export. Please apply filters to view data first.');
+                return;
+            }
+
+            const rows = currentTableData;
+            const csv = [];
+            const cols = Object.keys(rows[0]);
+            
+            // Use user-friendly names for the header
+            csv.push(cols.map(col => AppConfig.variableMetadata[col] || col).join(','));
+
+            rows.forEach(r => {
+                csv.push(cols.map(c => {
+                    let value = r[c];
+                    
+                    // Apply the same formatting as the table display
+                    if (typeof value === 'string' && !isNaN(parseFloat(value)) && c !== 'year' && value.includes('.')) {
+                        value = parseFloat(value).toFixed(3);
+                    }
+
+                    if (value === null || value === undefined) {
+                        value = ''; // Empty string for null/undefined
+                    } else if (typeof value === 'string' && (value.includes(',') || value.includes('\n') || value.includes('"'))) {
+                        value = `"${value.replace(/"/g, '""')}"`; // Escape double quotes and wrap
+                    }
+                    return value;
+                }).join(','));
+            });
+
+            const blob = new Blob([csv.join('\n')], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `vdem_data_export.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function toggleTheme() {
+            document.body.classList.toggle('dark-mode');
+        }
+        
+        function resetFilters() {
+            const mainIndicatorSelect = document.getElementById('main-indicator-select');
+            Array.from(mainIndicatorSelect.options).forEach(option => option.selected = (option.value === 'v2x_polyarchy'));
+
+            const otherIndicatorSelect = document.getElementById('other-indicator-select');
+            Array.from(otherIndicatorSelect.options).forEach(option => option.selected = false); // Deselect all
+
+            document.getElementById('region-select').selectedIndex = -1; // Deselect all regions
+            document.getElementById('country-select').selectedIndex = -1; // Deselect all countries
+            
+            // Reset year range selectors to min/max available (>=1960)
+            const startYearSelect = document.getElementById('start-year-select');
+            const endYearSelect = document.getElementById('end-year-select');
+            if (startYearSelect.options.length > 0) startYearSelect.value = startYearSelect.options[0].value;
+            if (endYearSelect.options.length > 0) endYearSelect.value = endYearSelect.options[endYearSelect.options.length - 1].value;
+            
+            document.getElementById('hide-low-coder').checked = false;
+            document.getElementById('flag-convergence').checked = false;
+            updateView();
+        }
+
+        function setupListeners() {
+            const debounce = (func, delay) => {
+                let timeout;
+                return (...args) => {
+                    clearTimeout(timeout);
+                    timeout = setTimeout(() => func.apply(this, args), delay);
+                };
+            };
+            const debouncedUpdate = debounce(updateView, 300);
+
+            document.querySelectorAll('.nav-button[data-view]').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    document.querySelectorAll('.nav-button.active').forEach(b => b.classList.remove('active')); 
+                    e.target.classList.add('active');
+                    currentView = e.target.dataset.view; 
+                    updateView(); 
+                });
+            });
+
+            document.getElementById('themeToggle').addEventListener('click', toggleTheme);
+            document.getElementById('aboutButton').addEventListener('click', () => document.getElementById('about-modal').style.display = 'block');
+            document.getElementById('aboutClose').addEventListener('click', () => document.getElementById('about-modal').style.display = 'none');
+            window.addEventListener('click', e => {
+                if (e.target === document.getElementById('about-modal')) {
+                    document.getElementById('about-modal').style.display = 'none';
+                }
+            });
+
+            document.querySelectorAll('#control-panel select, #control-panel input[type="checkbox"]').forEach(ctrl => {
+                ctrl.addEventListener('change', debouncedUpdate);
+            });
+            
+            document.getElementById('start-year-select').addEventListener('change', debouncedUpdate);
+            document.getElementById('end-year-select').addEventListener('change', debouncedUpdate);
+
+            document.getElementById('resetFilters').addEventListener('click', resetFilters);
+            document.getElementById('exportCSV').addEventListener('click', exportToCSV);
+           
+            window.addEventListener('resize', () => {
+                if (map) map.invalidateSize();
+            });
+        }
+
+        // Main initialization
+        (async () => {
+            try {
+                showSpinner();
+                await initDuckDB();
+                await Promise.all([initMap(), populateSelectors()]);
+                setupListeners();
+                resetFilters(); // Initialize with default filters and update the view
+            } catch (err) {
+                console.error('Initialization error:', err);
+                alert('Failed to initialize the dashboard: ' + err.message + '. Check console for more details and ensure browser supports WebAssembly/WebWorkers.');
+            } finally {
+                hideSpinner();
+            }
+        })();
+    </script>
+</body>
+</html>
