@@ -313,24 +313,24 @@
         import * as duckdb from 'https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.29.0/+esm';
 
         // --- DuckDB-WASM Performance Note ---
-        // This application uses DuckDB-WASM with its httpfs extension to query a remote CSV file directly.
+        // This application uses DuckDB-WASM with its httpfs extension to query a remote Parquet file directly.
         // It does NOT download the entire dataset into memory. Instead, DuckDB efficiently streams
         // only the required data chunks from the remote file using HTTP Range Requests. This makes
-        // the application fast and memory-efficient, even with very large datasets.
+        // the application fast and memory-efficient.
         
         // Encapsulate ALL core constants in a single object to ensure robust scope and availability
         const AppConfig = {
-            DATA_URL: 'https://huggingface.co/datasets/mnshakoor06/Vdem/resolve/main/vDem-v15.csv',
+            DATA_URL: 'https://huggingface.co/datasets/mnshakoor06/Vdem/resolve/main/v-dem-v15.parquet',
             
             variableMetadata: {
-                // High-Level Democracy Indices (p.47-49, Appendix A)
+                // High-Level Democracy Indices
                 'v2x_polyarchy': 'Electoral Democracy Index (D)',
                 'v2x_libdem': 'Liberal Democracy Index (D)',
                 'v2x_partipdem': 'Participatory Democracy Index (D)',
                 'v2x_delibdem': 'Deliberative Democracy Index (D)',
                 'v2x_egaldem': 'Egalitarian Democracy Index (D)',
 
-                // Mid-Level Democracy Indices (Components) (p.49-60, Appendix A)
+                // Mid-Level Democracy Indices (Components)
                 'v2x_freexp_altinf': 'Freedom of Expression & Alt. Info. Index (D)',
                 'v2x_frassoc_thick': 'Freedom of Association Thick Index (D)',
                 'v2xel_frefair': 'Clean Elections Index (D)',
@@ -346,49 +346,8 @@
                 'v2xeg_eqprotec': 'Equal Protection Index (D)',
                 'v2xeg_eqaccess': 'Equal Access Index (D)',
                 'v2xeg_eqdr': 'Equal Distribution of Resources Index (D)',
-                'v2x_api': 'Additive Polyarchy Index (D)',
-                'v2x_mpi': 'Multiplicative Polyarchy Index (D)',
-                'v2x_civlib': 'Civil Liberties Index (D)',
-                'v2x_clphy': 'Physical Violence Index (D)',
-                'v2x_clpol': 'Political Civil Liberties Index (D)',
-                'v2x_clpriv': 'Private Civil Liberties Index (D)',
-                'v2x_corr': 'Political Corruption Index (D)',
-                'v2x_execorr': 'Executive Corruption Index (D)',
-                'v2x_pubcorr': 'Public Sector Corruption Index (D)',
-                'v2x_gender': 'Women Political Empowerment Index (D)',
-                'v2x_gencl': 'Women Civil Liberties Index (D)',
-                'v2x_gencs': 'Women Civil Society Participation Index (D)',
-                'v2x_genpp': 'Women Political Participation Index (D)',
-                'v2x_rule': 'Rule of Law Index (D)',
-                'v2xdd_i_ci': 'Popular Initiative Index (D)',
-                'v2xdd_i_rf': 'Popular Referendum Index (D)',
-                'v2xdd_i_or': 'Obligatory Referendum Index (D)',
-                'v2xdd_i_pl': 'Plebiscites Index (D)',
-                'v2xdd_cic': 'Citizen-initiated Component of Direct Popular Vote Index (D)',
-                'v2xdd_toc': 'Top-Down Component of Direct Popular Vote Index (D)',
-                'v2xcs_ccsi': 'Core Civil Society Index (D)',
-                'v2x_elecreg': 'Electoral Regime Index (A)',
-                'v2xex_elecreg': 'Executive Electoral Regime Index (A)',
-                'v2xlg_elecreg': 'Legislative Electoral Regime Index (A)',
-                'v2x_EDcomp_thick': 'Electoral Component Index (D)',
-                'v2x_freexp': 'Freedom of Expression Index (D)',
-                'v2x_hosabort': 'Presidential Election Aborted (D)',
-                'v2x_hosinter': 'Chief Executive No Longer Elected (D)',
-                'v2x_legabort': 'Legislative Election Aborted (D)',
-                'v2xcl_disc': 'Freedom of Discussion Index (D)',
-                'v2xcl_dmove': 'Freedom of Domestic Movement Index (D)',
-                'v2xcl_slave': 'Freedom from Forced Labor Index (D)',
-                'v2xel_elecparl': 'Legislative Election (D)',
-                'v2xel_elecpres': 'Presidential Election (D)',
-                'v2xex_elecleg': 'Legislature Directly Elected (D)',
-                'v2xlg_leginter': 'Legislature Closed Down or Aborted (D)',
-                'v2xme_altinf': 'Alternative Sources of Information Index (D)',
-                'v2xps_party': 'Party Institutionalization Index (D)',
-                'v2x_divparctrl': 'Divided Party Control Index (D)',
-                'v2x_feduni': 'Division of Power Index (D)',
-                'v2xca_academ': 'Academic Freedom Index (D)',
                 
-                // Other Key Indicators (from OCR and typical V-Dem variables)
+                // Other relevant indicators
                 'v2psparban': 'Party Ban (C)',
                 'v2psbars': 'Barriers to Parties (C)',
                 'v2psoppaut': 'Opposition Parties Autonomy (C)',
@@ -528,10 +487,10 @@
         // Populate filter selectors
         async function populateSelectors() {
             const baseCsvOptions = `, HEADER=TRUE, ALL_VARCHAR=TRUE`;
-
-            const regionSQL = `SELECT DISTINCT e_regionpol_6C AS region FROM read_csv_auto('${AppConfig.DATA_URL}'${baseCsvOptions}) WHERE e_regionpol_6C IS NOT NULL ORDER BY region`;
-            const countrySQL = `SELECT DISTINCT country_name, country_text_id FROM read_csv_auto('${AppConfig.DATA_URL}'${baseCsvOptions}) WHERE country_name IS NOT NULL ORDER BY country_name`;
-            const yearSQL = `SELECT DISTINCT year FROM read_csv_auto('${AppConfig.DATA_URL}'${baseCsvOptions}) WHERE year IS NOT NULL ORDER BY year`;
+            
+            const regionSQL = `SELECT DISTINCT e_regionpol_6C AS region FROM read_parquet('${AppConfig.DATA_URL}') WHERE e_regionpol_6C IS NOT NULL ORDER BY region`;
+            const countrySQL = `SELECT DISTINCT country_name, country_text_id FROM read_parquet('${AppConfig.DATA_URL}') WHERE country_name IS NOT NULL ORDER BY country_name`;
+            const yearSQL = `SELECT DISTINCT year FROM read_parquet('${AppConfig.DATA_URL}') WHERE year IS NOT NULL ORDER BY year`;
 
             const [regions, countries, years] = await Promise.all([
                 runQuery('regions', regionSQL),
@@ -668,7 +627,7 @@
                 featuresToFit = geo.features.filter(f => selectedIsos.has(f.id) || selectedIsos.has(f.properties.iso_a3) || selectedIsos.has(f.properties.NAME));
             } else if (selectedRegions.length > 0) {
                 const regionNames = selectedRegions.map(o => o.value);
-                const tempSql = `SELECT DISTINCT country_text_id FROM read_csv_auto('${AppConfig.DATA_URL}', HEADER=TRUE, ALL_VARCHAR=TRUE) WHERE e_regionpol_6C IN (${regionNames.map(r => `'${r.replace("'", "''")}'`).join(',')}) AND country_text_id IS NOT NULL`;
+                const tempSql = `SELECT DISTINCT country_text_id FROM read_parquet('${AppConfig.DATA_URL}') WHERE e_regionpol_6C IN (${regionNames.map(r => `'${r.replace("'", "''")}'`).join(',')}) AND country_text_id IS NOT NULL`;
                 const countriesInRegions = await runQuery('countriesInRegions', tempSql);
                 const isosInRegions = new Set(countriesInRegions.map(d => d.country_text_id));
 
@@ -704,8 +663,8 @@
             
             let clauses = [];
             if (startYear && endYear && parseInt(startYear) <= parseInt(endYear)) { 
-                // Explicitly cast year column to INTEGER for comparison to avoid type mismatch
-                clauses.push(`CAST(year AS INTEGER) BETWEEN ${startYear} AND ${endYear}`);
+                // No need to cast 'year' when reading from Parquet, as it has a defined schema
+                clauses.push(`year BETWEEN ${startYear} AND ${endYear}`);
             } else {
                 return ''; // Return empty string if years are not properly selected
             }
@@ -729,6 +688,7 @@
 
             const tableContainer = document.getElementById('data-table-container');
             tableContainer.innerHTML = ''; // Clear previous content
+            currentTableData = []; // Clear the export data cache
 
             if (selectedMetrics.length === 0) {
                 tableContainer.innerHTML = '<p style="text-align: center;">Please select one or more indicators to view data.</p>';
@@ -742,8 +702,6 @@
                 map.setView([20, 0], 2);
                 return;
             }
-
-            const baseCsvOptions = `, HEADER=TRUE, ALL_VARCHAR=TRUE`;
             
             const columnsToSelect = [...AppConfig.CORE_COMMON_COLUMNS, ...selectedMetrics].filter((value, index, self) => self.indexOf(value) === index);
             const selectColsSQL = columnsToSelect.join(', ');
@@ -756,7 +714,7 @@
                 return;
             }
 
-            const sql = `SELECT ${selectColsSQL} FROM read_csv_auto('${AppConfig.DATA_URL}'${baseCsvOptions}) ${whereClause} ORDER BY country_name, year`;
+            const sql = `SELECT ${selectColsSQL} FROM read_parquet('${AppConfig.DATA_URL}') ${whereClause} ORDER BY country_name, year`;
             const data = await runQuery(`data-table-${whereClause}-${selectedMetrics.join('-')}`, sql);
             currentTableData = data; // Update the global variable with the latest data
 
@@ -778,8 +736,8 @@
                     columnsToSelect.forEach(col => {
                         const td = tr.insertCell();
                         let value = rowData[col];
-                        if (typeof value === 'string' && !isNaN(parseFloat(value)) && col !== 'year' && value.includes('.')) {
-                            value = parseFloat(value).toFixed(3);
+                        if (typeof value === 'number' && col !== 'year') { // Format numeric data, but keep year as is
+                            value = value.toFixed(3);
                         }
                         td.textContent = value !== null && value !== undefined ? value : 'N/A';
                     });
@@ -836,8 +794,8 @@
                     let value = r[c];
                     
                     // Apply the same formatting as the table display
-                    if (typeof value === 'string' && !isNaN(parseFloat(value)) && c !== 'year' && value.includes('.')) {
-                        value = parseFloat(value).toFixed(3);
+                    if (typeof value === 'number' && c !== 'year') {
+                        value = value.toFixed(3);
                     }
 
                     if (value === null || value === undefined) {
